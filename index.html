@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI วิเคราะห์พลาสติก & การแปรรูป</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #27ae60; --dark: #2c3e50; --bg: #f8f9fa; }
+        
+        body { 
+            font-family: 'Kanit', sans-serif; 
+            background-color: var(--bg); 
+            color: var(--dark); 
+            margin: 0; 
+            padding: 20px; 
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container { 
+            max-width: 700px; 
+            width: 100%;
+            background: white; 
+            padding: 30px; 
+            border-radius: 25px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+            text-align: center; /* ทำให้ข้อความและ inline elements อยู่ตรงกลาง */
+        }
+
+        h1 { color: var(--primary); margin-bottom: 10px; }
+
+        #webcam-container { 
+            border: 6px solid var(--primary); 
+            border-radius: 20px; 
+            overflow: hidden; 
+            display: inline-block; 
+            background: #000; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin: 0 auto; /* จัดกลาง */
+            line-height: 0; /* ลดช่องว่างใต้ canvas */
+        }
+
+        /* บังคับให้ canvas ที่ถูกสร้างใหม่จัดกลางด้วย */
+        #webcam-container canvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .btn-capture { 
+            background: var(--primary); 
+            color: white; 
+            border: none; 
+            padding: 15px 40px; 
+            font-size: 20px; 
+            border-radius: 50px; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            font-weight: 600; 
+            margin-top: 20px; 
+            margin-bottom: 10px;
+        }
+
+        .btn-capture:hover { 
+            transform: scale(1.05); 
+            background: #219150; 
+            box-shadow: 0 5px 15px rgba(39,174,96,0.4); 
+        }
+
+        #result-card { 
+            margin-top: 25px; 
+            display: none; 
+            text-align: center; /* เปลี่ยนเป็นจัดกลาง */
+            animation: fadeIn 0.5s; 
+            border-top: 3px solid var(--primary); 
+            padding-top: 20px; 
+        }
+
+        .type-badge { 
+            background: var(--primary); 
+            color: white; 
+            padding: 5px 25px; 
+            border-radius: 10px; 
+            font-size: 28px; 
+            display: inline-block; 
+            margin-bottom: 15px; 
+        }
+
+        .info-box { 
+            background: #eef9f1; 
+            padding: 15px; 
+            border-radius: 15px; 
+            margin-bottom: 15px; 
+            text-align: left; /* เนื้อหาข้างในกล่องข้อมูลให้ชิดซ้ายเพื่อให้อ่านง่าย */
+        }
+
+        .info-label { 
+            font-weight: 600; 
+            color: var(--primary); 
+            display: block; 
+            margin-bottom: 5px; 
+            font-size: 18px; 
+        }
+
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>♻️ ระบบแยกประเภทพลาสติก</h1>
+    <p>ส่องพลาสติกหน้ากล้องแล้วกดปุ่มเพื่อวิเคราะห์</p>
+    
+    <div id="webcam-container"></div>
+    <br>
+    <button class="btn-capture" onclick="analyzeImage()">📸 วิเคราะห์พลาสติก</button>
+
+    <div id="result-card">
+        <div id="res-type" class="type-badge"></div>
+        <div id="res-conf" style="color: #7f8c8d; font-size: 16px; margin-bottom: 15px;"></div>
+        
+        <div id="res-detail">
+            <div class="info-box">
+                <span class="info-label">📍 พบได้บ่อยในผลิตภัณฑ์:</span>
+                <span id="res-original"></span>
+            </div>
+            <div class="info-box">
+                <span class="info-label">💡 นำไปพัฒนาเป็นผลิตภัณฑ์ใหม่:</span>
+                <span id="res-recycled"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+    const plasticInfo = {
+        "PET (1)": {
+            orig: "ขวดน้ำเปล่า, ขวดน้ำอัดลม, ขวดน้ำมันพืช, ถาดใส่อาหารแบบใส",
+            next: "เส้นใยสังเคราะห์สำหรับทำเสื้อผ้า (เสื้อยืด/เสื้อกันหนาว), ใยสังเคราะห์ในที่นอน, พรม, สายรัดกล่อง"
+        },
+        "HDPE(2)": {
+            orig: "ขวดนม, ขวดแชมพู, ถุงหูหิ้วชนิดหนา, ขวดน้ำยาทำความสะอาด",
+            next: "กระถางต้นไม้, ถังขยะ, โต๊ะม้านั่งพลาสติก, ท่อระบายน้ำ, ไม้เทียมสำหรับงานก่อสร้าง"
+        },
+        "PVC(3)": {
+            orig: "ท่อประปา, สายยาง, ฟิล์มยืดห่ออาหาร, หนังเทียม, ของเล่นเด็ก",
+            next: "กรวยจราจร, แผ่นปูพื้น, ตลับเทป, ม้านั่งภายนอกอาคาร"
+        },
+        "LDPE(4)": {
+            orig: "ถุงเย็นใส่อาหาร, ฟิล์มยืดถนอมอาหาร, หลอดพลาสติกแบบบีบ",
+            next: "ถุงดำขยะ, ถังขยะพลาสติก, กระเบื้องปูพื้นพลาสติก, เฟอร์นิเจอร์พลาสติก"
+        },
+        "PP(5)": {
+            orig: "กล่องบรรจุอาหาร (Microwave Safe), ฝาขวดน้ำ, หลอดดูดน้ำ",
+            next: "กล่องแบตเตอรี่รถยนต์, กันชนรถยนต์, ไม้กวาดพลาสติก, ถังหมักขยะ"
+        },
+        "PS(6)": {
+            orig: "จานช้อนส้อมพลาสติก (ใช้แล้วทิ้ง), กล่องซีดี, โฟมใส่อาหาร",
+            next: "ไม้บรรทัด, แผงสวิตช์ไฟ, กล่องวิดีโอ, ฉนวนความร้อน"
+        },
+        "OTHER(7)": {
+            orig: "ขวดนมเด็ก (PC), เคสคอมพิวเตอร์, พลาสติกหลายชั้น",
+            next: "ผลิตภัณฑ์ไม้เทียมคุณภาพสูง, ม้านั่งสวนสาธารณะ, ใช้เป็นเชื้อเพลิงในอุตสาหกรรม"
+        }
+    };
+
+    const MODEL_URL = "./my_model/";
+    let model, webcam, history = [];
+    const HISTORY_SIZE = 10;
+
+    async function setup() {
+        try {
+            model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+            webcam = new tmImage.Webcam(450, 350, true);
+            await webcam.setup();
+            await webcam.play();
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            window.requestAnimationFrame(loop);
+        } catch (e) {
+            alert("โหลดโมเดลไม่สำเร็จ! กรุณาเปิดผ่าน Live Server");
+        }
+    }
+
+    async function loop() {
+        webcam.update();
+        const prediction = await model.predict(webcam.canvas);
+        history.push(prediction);
+        if (history.length > HISTORY_SIZE) history.shift();
+        window.requestAnimationFrame(loop);
+    }
+
+    function analyzeImage() {
+        if (history.length === 0) return;
+        let avgResults = history[0].map((p, i) => {
+            let sum = 0;
+            for (let h of history) sum += h[i].probability;
+            return { className: p.className, probability: sum / history.length };
+        });
+        let top = avgResults.reduce((prev, curr) => (prev.probability > curr.probability) ? prev : curr);
+        displayResult(top);
+    }
+
+    function displayResult(result) {
+        const card = document.getElementById("result-card");
+        const typeBox = document.getElementById("res-type");
+        const confBox = document.getElementById("res-conf");
+        const origBox = document.getElementById("res-original");
+        const nextBox = document.getElementById("res-recycled");
+        const detail = document.getElementById("res-detail");
+
+        card.style.display = "block";
+        const prob = (result.probability * 100).toFixed(1);
+
+        if (result.className === "พื้นหลัง" || result.probability < 0.6) {
+            typeBox.innerText = "❌ ระบุไม่ได้ชัดเจน";
+            confBox.innerText = `ความมั่นใจ: ${prob}% (กรุณาถือวัตถุให้ใกล้ขึ้น)`;
+            detail.style.display = "none";
+        } else {
+            const info = plasticInfo[result.className];
+            typeBox.innerText = "✅ " + result.className;
+            confBox.innerText = `ระดับความเชื่อมั่น: ${prob}%`;
+            origBox.innerText = info.orig;
+            nextBox.innerText = info.next;
+            detail.style.display = "block";
+        }
+    }
+
+    setup();
+</script>
+
+</body>
+</html>
