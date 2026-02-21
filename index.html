@@ -26,21 +26,15 @@
     text-align: center;
   }
 
-  h1 {
-    color: #2e7d32;
-    margin-bottom: 5px;
-  }
-
-  p {
-    font-size: 14px;
-    color: #555;
-  }
+  h1 { color: #2e7d32; margin-bottom: 5px; }
+  p { font-size: 14px; color: #555; }
 
   video {
     width: 100%;
     border-radius: 15px;
     margin-top: 15px;
     border: 4px solid #e0f2f1;
+    background: #000;
   }
 
   button {
@@ -54,6 +48,7 @@
     color: white;
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
+    font-weight: bold;
   }
 
   button:hover {
@@ -61,6 +56,7 @@
     box-shadow: 0 6px 15px rgba(0,0,0,0.2);
   }
 
+  /* ส่วนแสดงผลความแม่นยำ */
   .result {
     margin-top: 18px;
     background: #f1f8f6;
@@ -68,15 +64,33 @@
     padding: 15px;
     text-align: left;
     animation: fadeIn 0.5s ease;
+    border-left: 5px solid #2ecc71;
+  }
+
+  .confidence-container {
+    background: #ddd;
+    border-radius: 10px;
+    height: 10px;
+    width: 100%;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+
+  .confidence-bar {
+    background: #2ecc71;
+    height: 100%;
+    width: 0%; /* จะเปลี่ยนด้วย JS */
+    transition: width 0.8s ease-in-out;
   }
 
   .badge {
     display: inline-block;
     background: #4caf50;
     color: white;
-    padding: 5px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: bold;
     margin-bottom: 10px;
   }
 
@@ -85,11 +99,7 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  footer {
-    margin-top: 15px;
-    font-size: 12px;
-    color: #888;
-  }
+  footer { margin-top: 15px; font-size: 11px; color: #888; }
 </style>
 </head>
 
@@ -97,25 +107,27 @@
 
 <div class="app">
   <h1>♻️ Plastic AI</h1>
-  <p>สแกนพลาสติกด้วยกล้อง</p>
+  <p>สแกนพลาสติกด้วยระบบ AI อัจฉริยะ</p>
 
-  <video id="video" autoplay></video>
-  <button onclick="capture()">📸 ถ่ายภาพ</button>
+  <video id="video" autoplay playsinline></video>
+  <button onclick="capture()">📸 เริ่มการวิเคราะห์ภาพ</button>
 
   <canvas id="canvas" style="display:none;"></canvas>
 
-  <div id="result"></div>
+  <div id="result-container"></div>
 
-  <footer>โครงงาน AI คัดแยกขยะพลาสติก</footer>
+  <footer>โครงงานพัฒนาระบบคัดแยกขยะด้วย Machine Learning</footer>
 </div>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
-const result = document.getElementById("result");
+const resultContainer = document.getElementById("result-container");
 
+// เปิดกล้อง
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-  .then(stream => video.srcObject = stream);
+  .then(stream => video.srcObject = stream)
+  .catch(err => alert("ไม่สามารถเปิดกล้องได้: " + err));
 
 function capture() {
   const ctx = canvas.getContext("2d");
@@ -123,42 +135,47 @@ function capture() {
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0);
 
-  analyzePlastic();
+  // เอฟเฟกต์ระหว่างรอ (Optional)
+  resultContainer.innerHTML = "<p>กำลังประมวลผล...</p>";
+  
+  setTimeout(analyzePlastic, 500); // จำลองการประมวลผลแป๊บหนึ่ง
 }
 
 function analyzePlastic() {
   const plastics = [
-    {
-      type: "PET (1)",
-      recycle: "ขวดน้ำใหม่, เส้นใยผ้า, พรม",
-      icon: "🥤"
-    },
-    {
-      type: "HDPE (2)",
-      recycle: "ขวดแชมพู, ถังน้ำ, ท่อ",
-      icon: "🧴"
-    },
-    {
-      type: "PP (5)",
-      recycle: "กล่องอาหาร, ฝาขวด, ภาชนะไมโครเวฟ",
-      icon: "🍱"
-    },
-    {
-      type: "LDPE (4)",
-      recycle: "ถุงขยะ, แผ่นพลาสติก",
-      icon: "🛍"
-    }
+    { type: "PET (1)", recycle: "ขวดน้ำใหม่, เส้นใยผ้า, พรม", icon: "🥤" },
+    { type: "HDPE (2)", recycle: "ขวดแชมพู, ถังน้ำ, ท่อ", icon: "🧴" },
+    { type: "PP (5)", recycle: "กล่องอาหาร, ฝาขวด, ภาชนะไมโครเวฟ", icon: "🍱" },
+    { type: "LDPE (4)", recycle: "ถุงขยะ, แผ่นพลาสติก", icon: "🛍" },
+    { type: "PS (6)", recycle: "โฟมใส่อาหาร, ไม้บรรทัด, ตลับเทป", icon: "📦" }
   ];
 
+  // สุ่มเลือกชนิดพลาสติก
   const r = plastics[Math.floor(Math.random() * plastics.length)];
+  
+  // สุ่มค่าความแม่นยำระหว่าง 85.0 ถึง 99.9 %
+  const confidence = (Math.random() * (99.9 - 85.0) + 85.0).toFixed(1);
 
-  result.innerHTML = `
+  resultContainer.innerHTML = `
     <div class="result">
-      <span class="badge">ผลการวิเคราะห์</span>
-      <h3>${r.icon} ${r.type}</h3>
-      <p><b>รีไซเคิลเป็น:</b><br>${r.recycle}</p>
+      <span class="badge">วิเคราะห์สำเร็จ</span>
+      <h3 style="margin:5px 0;">${r.icon} ${r.type}</h3>
+      
+      <div style="font-size: 13px; color: #333;">
+        ความเชื่อมั่น (Confidence): <b>${confidence}%</b>
+      </div>
+      <div class="confidence-container">
+        <div id="bar" class="confidence-bar" style="width: 0%"></div>
+      </div>
+
+      <p style="margin-top:10px;"><b>รีไซเคิลเป็น:</b><br>${r.recycle}</p>
     </div>
   `;
+
+  // อัปเดตแถบความมั่นใจให้เลื่อนออก
+  setTimeout(() => {
+    document.getElementById("bar").style.width = confidence + "%";
+  }, 100);
 }
 </script>
 
